@@ -9,8 +9,9 @@ import (
 
 const (
 	connectionsBeforeClose = 1
-	testIterations         = 1000
+	testIterations         = 10000
 	enableSleep            = false
+	useSaneListener        = true
 )
 
 func runTest() error {
@@ -18,6 +19,10 @@ func runTest() error {
 	if err != nil {
 		panic(err)
 	}
+	if useSaneListener {
+		ln = NewSaneListener(ln)
+	}
+
 	addr := ln.Addr().String()
 	fmt.Println("Listener started on", addr)
 
