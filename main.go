@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -13,65 +14,49 @@ const (
 	enableSleep            = false
 )
 
-type test struct {
-	ln             net.Listener
-	addr           string
-	gotConnections int32
-}
-
-func (t *test) startListener() {
+func runTest() error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(err)
 	}
-	t.ln = ln
-	t.addr = ln.Addr().String()
-	go t.acceptLoop()
+	addr := ln.Addr().String()
+	fmt.Println("Listener started on", addr)
 
-	fmt.Println("TCP Listener started on", t.addr)
-}
+	var gotConnections int32
+	waitForListener := make(chan error)
+	go func() {
+		defer close(waitForListener)
 
-func (t *test) acceptLoop() {
-	for {
-		conn, err := t.ln.Accept()
-		if err != nil {
-			return
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+
+			if atomic.AddInt32(&gotConnections, 1) > connectionsBeforeClose {
+				waitForListener <- errors.New("got unexpected conn")
+				return
+			}
+			conn.Close()
 		}
-
-		go t.handleConn(conn)
-	}
-}
-
-func (t *test) handleConn(conn net.Conn) {
-	if atomic.AddInt32(&t.gotConnections, 1) > connectionsBeforeClose {
-		fmt.Println("  got unexpected conn with local addr", conn.LocalAddr(), "remote", conn.RemoteAddr())
-	}
-	conn.Close()
-}
-
-func runTest() error {
-	t := &test{}
-	t.startListener()
+	}()
 
 	for i := 0; i < connectionsBeforeClose; i++ {
-		if _, _, err := connect(t.addr); err != nil {
+		if _, _, err := connect(addr); err != nil {
 			panic(err)
 		}
 	}
 
-	t.ln.Close()
+	ln.Close()
 
 	if enableSleep {
 		time.Sleep(time.Millisecond)
 	}
 
-	if laddr, raddr, err := connect(t.addr); err == nil {
-		if false {
-			return fmt.Errorf("connect succeeded even though it shouldn't have. local: %v remote %v",
-				laddr, raddr)
-		}
-	}
-	return nil
+	connect(addr)
+
+	err, _ = <-waitForListener
+	return err
 }
 
 func main() {
