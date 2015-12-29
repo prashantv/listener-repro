@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync/atomic"
 	"time"
 )
 
@@ -22,18 +21,19 @@ func runTest() error {
 	addr := ln.Addr().String()
 	fmt.Println("Listener started on", addr)
 
-	var gotConnections int32
 	waitForListener := make(chan error)
 	go func() {
 		defer close(waitForListener)
 
+		var connCount int
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
 
-			if atomic.AddInt32(&gotConnections, 1) > connectionsBeforeClose {
+			connCount++
+			if connCount > connectionsBeforeClose {
 				waitForListener <- errors.New("got unexpected conn")
 				return
 			}
