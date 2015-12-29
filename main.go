@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	connectionsBeforeClose = 5
-	testIterations         = 1000
+	connectionsBeforeClose = 1
+	testIterations         = 10
 	enableSleep            = false
 )
 
