@@ -16,7 +16,7 @@ func runTest() error {
 	addr, ln := startListener()
 
 	for i := 0; i < connectionsBeforeClose; i++ {
-		if err := connect(addr); err != nil {
+		if _, _, err := connect(addr); err != nil {
 			panic(err)
 		}
 	}
@@ -26,8 +26,9 @@ func runTest() error {
 		time.Sleep(time.Millisecond)
 	}
 
-	if err := connect(addr); err == nil {
-		return fmt.Errorf("connect succeeded even though it shouldn't have")
+	if laddr, raddr, err := connect(addr); err == nil {
+		return fmt.Errorf("connect succeeded even though it shouldn't have. local: %v remote %v",
+			laddr, raddr)
 	}
 	return nil
 }
@@ -55,12 +56,14 @@ func startListener() (string, net.Listener) {
 	return addr, ln
 }
 
-func connect(addr string) error {
+func connect(addr string) (localAddr string, remoteAddr string, err error) {
 	conn, err := net.Dial("tcp", addr)
 	if err == nil {
+		localAddr = conn.LocalAddr().String()
+		remoteAddr = conn.RemoteAddr().String()
 		conn.Close()
 	}
-	return err
+	return localAddr, remoteAddr, err
 }
 
 func acceptLoop(ln net.Listener) {
@@ -70,6 +73,7 @@ func acceptLoop(ln net.Listener) {
 			return
 		}
 
+		fmt.Println("  got conn with local addr", conn.LocalAddr(), "remote", conn.RemoteAddr())
 		conn.Close()
 	}
 }
