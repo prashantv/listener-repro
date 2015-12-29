@@ -33,11 +33,14 @@ func runTest() error {
 }
 
 func main() {
+	failures := 0
 	for i := 0; i < testIterations; i++ {
 		if err := runTest(); err != nil {
 			fmt.Println("Iteration", i, "failed with", err)
+			failures++
 		}
 	}
+	fmt.Printf("Got %v failures out of %v\n", failures, testIterations)
 }
 
 func startListener() (string, net.Listener) {
