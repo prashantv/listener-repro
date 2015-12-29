@@ -3,32 +3,73 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
 const (
 	connectionsBeforeClose = 1
-	testIterations         = 10
+	testIterations         = 1000
 	enableSleep            = false
 )
 
+type test struct {
+	ln             net.Listener
+	addr           string
+	gotConnections int32
+}
+
+func (t *test) startListener() {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	t.ln = ln
+	t.addr = ln.Addr().String()
+	go t.acceptLoop()
+
+	fmt.Println("TCP Listener started on", t.addr)
+}
+
+func (t *test) acceptLoop() {
+	for {
+		conn, err := t.ln.Accept()
+		if err != nil {
+			return
+		}
+
+		go t.handleConn(conn)
+	}
+}
+
+func (t *test) handleConn(conn net.Conn) {
+	if atomic.AddInt32(&t.gotConnections, 1) > connectionsBeforeClose {
+		fmt.Println("  got unexpected conn with local addr", conn.LocalAddr(), "remote", conn.RemoteAddr())
+	}
+	conn.Close()
+}
+
 func runTest() error {
-	addr, ln := startListener()
+	t := &test{}
+	t.startListener()
 
 	for i := 0; i < connectionsBeforeClose; i++ {
-		if _, _, err := connect(addr); err != nil {
+		if _, _, err := connect(t.addr); err != nil {
 			panic(err)
 		}
 	}
-	ln.Close()
+
+	t.ln.Close()
 
 	if enableSleep {
 		time.Sleep(time.Millisecond)
 	}
 
-	if laddr, raddr, err := connect(addr); err == nil {
-		return fmt.Errorf("connect succeeded even though it shouldn't have. local: %v remote %v",
-			laddr, raddr)
+	if laddr, raddr, err := connect(t.addr); err == nil {
+		if false {
+			return fmt.Errorf("connect succeeded even though it shouldn't have. local: %v remote %v",
+				laddr, raddr)
+		}
 	}
 	return nil
 }
@@ -44,18 +85,6 @@ func main() {
 	fmt.Printf("Got %v failures out of %v\n", failures, testIterations)
 }
 
-func startListener() (string, net.Listener) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		panic(err)
-	}
-	go acceptLoop(ln)
-
-	addr := ln.Addr().String()
-	fmt.Println("TCP Listener started on", addr)
-	return addr, ln
-}
-
 func connect(addr string) (localAddr string, remoteAddr string, err error) {
 	conn, err := net.Dial("tcp", addr)
 	if err == nil {
@@ -64,16 +93,4 @@ func connect(addr string) (localAddr string, remoteAddr string, err error) {
 		conn.Close()
 	}
 	return localAddr, remoteAddr, err
-}
-
-func acceptLoop(ln net.Listener) {
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-
-		fmt.Println("  got conn with local addr", conn.LocalAddr(), "remote", conn.RemoteAddr())
-		conn.Close()
-	}
 }
